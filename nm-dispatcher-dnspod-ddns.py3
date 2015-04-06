@@ -3,6 +3,7 @@
 config = {
 	'ipv4': {
 		'enable': True,
+		'interface': 'x',
 		'domain': 'x',
 		'subdomain': 'x',
 		'line': '默认',
@@ -11,13 +12,13 @@ config = {
 	},
 	'ipv6': {
 		'enable': True,
+		'interface': 'x',
 		'domain': 'x',
 		'subdomain': 'x',
 		'line': '默认',
 		'email': 'x',
-		'password': 'x',
+		'password': 'x'
 	},
-	'interface': 'enp3s0',
 	'host': 'https://dnsapi.cn/',
 	'debug': True
 }
@@ -27,6 +28,7 @@ config = {
 import sys
 import os
 import ipaddress
+import subprocess
 import requests
 
 
@@ -150,38 +152,61 @@ def update_ddns(config, is_ipv6, address):
 		return False
 
 
-def handle_ip(config, action, is_ipv6):
+def _get_ifconfig(interface_name, keyword):
+	ret = subprocess.check_output(['ifconfig', interface_name],
+		universal_newlines=True)
+	lines = ret.splitlines()
+	results = []
+	for line in lines:
+		line = line.replace('  ', ' ').strip()
+		tokens = line.split(' ')
+		if tokens[0] == keyword:
+			results.append(tokens[1])
+	return results
+
+
+def handle_ip(config, interface_name, action, is_ipv6):
 	info = lambda msg: print(msg) if config['debug'] else None
 	if not is_ipv6:
 		config_section = config['ipv4']
 		ignore_action = 'dhcp6-change'
 		env_prefix = 'IP4'
+		ifconfig_keyword = 'inet'
 	else:
 		config_section = config['ipv6']
 		ignore_action = 'dhcp4-change'
 		env_prefix = 'IP6'
+		ifconfig_keyword = 'inet6'
+
+	info('Working with ' + env_prefix)
+	if interface_name != config_section['interface']:
+		info('Interface mismatch: ' + interface_name)
+		return False
 
 	if config_section['enable'] and action != ignore_action:
-		info('Working with ' + env_prefix)
-
 		ip_num_addresses = int(os.getenv(env_prefix + '_NUM_ADDRESSES', 0))
 		info('Got ' + str(ip_num_addresses) + ' address(es)')
+		ip_address = []
+		# Get address from env
 		if ip_num_addresses != 0:
-			ip_address = []
 			for i in range(ip_num_addresses):
 				ip = os.getenv(env_prefix + '_ADDRESS_' + str(i), None)
 				if ip is not None:
 					if '/' in ip:
 						ip = ip[:ip.index('/')]
 					ip_address.append(ip)
-			info('They are: ' + repr(ip_address))
-			valid_ip = get_first_ip(ip_address)
-			if valid_ip is not None:
-				info('Updating with valid address: ' + valid_ip)
-				update_ddns(config, is_ipv6, valid_ip)
-				return True
-			else:
-				info('All invalid. What a disappointment.')
+		# Get address by ifconfig
+		ip_address.extend(_get_ifconfig(
+			config_section['interface'],
+			ifconfig_keyword))
+		info('They are: ' + repr(ip_address))
+		valid_ip = get_first_ip(ip_address)
+		if valid_ip is not None:
+			info('Updating with valid address: ' + valid_ip)
+			update_ddns(config, is_ipv6, valid_ip)
+			return True
+		else:
+			info('All invalid. What a disappointment.')
 
 	return False
 
@@ -190,9 +215,6 @@ def main(config):
 	info = lambda msg: print(msg) if config['debug'] else None
 
 	interface_name = sys.argv[1]
-	if interface_name != config['interface']:
-		info('Interface mismatch: ' + interface_name)
-		return 1
 
 	action = sys.argv[2]
 	if action not in ['up', 'dhcp4-change', 'dhcp6-change']:
@@ -202,9 +224,9 @@ def main(config):
 	info('Dispatcher on interface: ' + interface_name + '; Action: ' + action)
 
 	# Handle IPv4
-	handle_ip(config, action, False)
+	handle_ip(config, interface_name, action, False)
 	# Handle IPv6
-	handle_ip(config, action, True)
+	handle_ip(config, interface_name, action, True)
 
 
 

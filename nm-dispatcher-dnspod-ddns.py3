@@ -167,8 +167,13 @@ def handle_ip(config, action, is_ipv6):
 		ip_num_addresses = int(os.getenv(env_prefix + '_NUM_ADDRESSES', 0))
 		info('Got ' + str(ip_num_addresses) + ' address(es)')
 		if ip_num_addresses != 0:
-			ip_address = [os.getenv(env_prefix + '_ADDRESS_' + str(i), None)
-				for i in range(ip_num_addresses)]
+			ip_address = []
+			for i in range(ip_num_addresses):
+				ip = os.getenv(env_prefix + '_ADDRESS_' + str(i), None)
+				if ip is not None:
+					if '/' in ip:
+						ip = ip[:ip.index('/')]
+					ip_address.append(ip)
 			info('They are: ' + repr(ip_address))
 			valid_ip = get_first_ip(ip_address)
 			if valid_ip is not None:

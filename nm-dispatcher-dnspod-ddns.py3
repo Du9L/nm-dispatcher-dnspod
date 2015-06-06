@@ -159,11 +159,11 @@ def update_ddns(config, is_ipv6, address):
 
 def _extract_ip(line, restr):
 	r = re.findall(restr, line)
-	return len(r)>0 ? r[0] : None
+	return r[0] if len(r)>0 else None
 
 
 def _get_ifconfig(interface_name, keyword, restr):
-	ret = subprocess.check_output(['env LANG=C LC_ALL=C ifconfig', interface_name],
+	ret = subprocess.check_output(['env', 'LANG=C', 'LC_ALL=C', 'ifconfig', interface_name],
 		universal_newlines=True)
 	lines = ret.splitlines()
 	results = []

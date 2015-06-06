@@ -23,17 +23,23 @@ config = {
 	'debug': True
 }
 
+
 ###############################################################################
 
 import sys
 import os
 import ipaddress
 import subprocess
+import re
 import requests
 
 
 def check_ip(ip):
-	ipobj = ipaddress.ip_address(ip)
+	try:
+		ipobj = ipaddress.ip_address(ip)
+	except ValueError:
+		return False
+
 	if isinstance(ipobj, ipaddress.IPv4Address):
 		return not(ipobj.is_private or
 			ipobj.is_unspecified or
@@ -152,8 +158,13 @@ def update_ddns(config, is_ipv6, address):
 		return False
 
 
-def _get_ifconfig(interface_name, keyword):
-	ret = subprocess.check_output(['ifconfig', interface_name],
+def _extract_ip(line, restr):
+	r = re.findall(restr, line)
+	return len(r)>0 ? r[0] : None
+
+
+def _get_ifconfig(interface_name, keyword, restr):
+	ret = subprocess.check_output(['env LANG=C LC_ALL=C ifconfig', interface_name],
 		universal_newlines=True)
 	lines = ret.splitlines()
 	results = []
@@ -162,6 +173,9 @@ def _get_ifconfig(interface_name, keyword):
 		tokens = line.split(' ')
 		if tokens[0] == keyword:
 			results.append(tokens[1])
+			ip = _extract_ip(line, restr)
+			if ip:
+				results.append(ip)
 	return results
 
 
@@ -172,11 +186,13 @@ def handle_ip(config, interface_name, action, is_ipv6):
 		ignore_action = 'dhcp6-change'
 		env_prefix = 'IP4'
 		ifconfig_keyword = 'inet'
+		ifconfig_restr = '((?:\d{1,3}\.){3}\d{1,3})'
 	else:
 		config_section = config['ipv6']
 		ignore_action = 'dhcp4-change'
 		env_prefix = 'IP6'
 		ifconfig_keyword = 'inet6'
+		ifconfig_restr = '((?:[\dA-Fa-f]{,4}\:){2,7}[\dA-Fa-f]{,4})'
 
 	info('Working with ' + env_prefix)
 	if interface_name != config_section['interface']:
@@ -198,7 +214,7 @@ def handle_ip(config, interface_name, action, is_ipv6):
 		# Get address by ifconfig
 		ip_address.extend(_get_ifconfig(
 			config_section['interface'],
-			ifconfig_keyword))
+			ifconfig_keyword, ifconfig_restr))
 		info('They are: ' + repr(ip_address))
 		valid_ip = get_first_ip(ip_address)
 		if valid_ip is not None:
